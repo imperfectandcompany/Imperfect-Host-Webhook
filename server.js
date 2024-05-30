@@ -3,16 +3,22 @@ const express = require('express');
 const crypto = require('crypto');
 const shell = require('shelljs');
 const app = express();
-
+const bodyParser = require('body-parser');
+const https = require('https');
 const PORT = process.env.PORT || 3000;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+const TEBEX_SECRET = process.env.TEBEX_SECRET;
+const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
+
+// Log environment variables to verify they are loaded correctly
+console.log('WEBHOOK_SECRET:', WEBHOOK_SECRET);
+console.log('TEBEX_SECRET:', TEBEX_SECRET);
+console.log('DISCORD_WEBHOOK:', DISCORD_WEBHOOK);
 
 // Middleware for JSON body parsing and signature verification
-app.use(express.json({
-  verify: (req, res, buf, encoding) => {
-    if (buf && buf.length) {
-      req.rawBody = buf.toString(encoding || 'utf8');
-    }
+app.use(bodyParser.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
   }
 }));
 
@@ -39,6 +45,126 @@ function verifyGitHubPayload(req, res, next) {
 
   req.traceId = `trace-${Date.now()}`;
   next();
+}
+
+// Middleware to validate Tebex webhook signatures
+function verifyTebexPayload(req, res, next) {
+  console.log('Incoming Headers:', req.headers); // Log all headers to debug
+  console.log('Body:', req.body); // Log the body to debug
+
+  if (!TEBEX_SECRET) {
+    console.error('TEBEX_SECRET is not set!');
+    return res.status(500).json({ error: 'Server configuration error. Please contact support.' });
+  }
+
+  const tebexHash = req.headers['x-signature'];
+    
+    
+  if (!tebexHash) {
+    console.error('No Tebex signature found.');
+    return res.status(401).json({ error: 'No Tebex signature found.' });
+  }
+
+  const bodyHash = crypto.createHash('sha256')
+    .update(req.rawBody)
+    .digest('hex');
+
+  try {
+    const finalHash = crypto.createHmac('sha256', TEBEX_SECRET)
+      .update(bodyHash)
+      .digest('hex');
+
+    if (finalHash !== tebexHash) {
+      console.error('Mismatched Tebex signatures.');
+      return res.status(401).json({ error: 'Mismatched Tebex signatures.' });
+    }
+  } catch (error) {
+    console.error('Error creating HMAC:', error.message);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+
+  req.traceId = `trace-${Date.now()}`;
+  next();
+}
+
+const sendDiscordMessage = (message, callback) => {
+  const postData = JSON.stringify({ content: message });
+
+  const options = {
+    hostname: 'discord.com',
+    port: 443,
+    path: `/api/webhooks/${process.env.DISCORD_WEBHOOK}`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData),
+    },
+  };
+
+  console.log("Request Options:", options); // Log the complete request setup
+  console.log("Payload:", postData); // Log the actual data being sent
+
+  const request = https.request(options, (response) => {
+    let responseData = '';
+
+    response.on('data', (chunk) => {
+      responseData += chunk;
+    });
+
+    response.on('end', () => {
+      console.log(`Discord Response: ${responseData} Status: ${response.statusCode}`);
+      if (response.statusCode === 204) {
+        callback(null, 'Message sent to Discord');
+      } else {
+        callback(new Error(`Failed to send message to Discord with status ${response.statusCode}: ${responseData}`));
+      }
+    });
+  });
+
+  request.on('error', (error) => {
+    console.error(`HTTP Request Error: ${error}`);
+    callback(error);
+  });
+
+  request.write(postData);
+  request.end();
+};
+
+
+function handlePaymentCompleted(event, res) {
+  logWithTraceId(event.id, `Payment completed: ${JSON.stringify(event.subject)}`);
+  sendDiscordMessage("Payment received", (error, result) => {
+    if (error) {
+      console.error('Error sending message to Discord:', error);
+      res.status(500).send('Error sending message to Discord');
+    } else {
+      res.status(200).send(result);
+    }
+  });
+}
+
+async function handleTebexValidation(event) {
+  logWithTraceId(event.id, `Validation completed: ${JSON.stringify(event.subject)}`);
+  return new Promise((resolve, reject) => {
+    sendDiscordMessage("Validation test from Tebex successful!", (error, result) => {
+      if (error) {
+        console.error('Error sending message to Discord:', error);
+        reject(error);
+      } else {
+        console.log(result);
+        resolve();
+      }
+    });
+  });
+}
+
+
+function handlePaymentDeclined(event) {
+  logWithTraceId(event.id, `Payment declined: ${JSON.stringify(event.subject)}`);
+}
+
+function handlePaymentRefunded(event) {
+  logWithTraceId(event.id, `Payment refunded: ${JSON.stringify(event.subject)}`);
 }
 
 // Modular function to handle Docker operations
@@ -77,6 +203,40 @@ app.post('/webhook', verifyGitHubPayload, async (req, res) => {
   } else {
     logWithTraceId(req.traceId, 'Unrecognized event.');
     res.status(400).json({ error: 'Unrecognized event type' });
+  }
+});
+
+app.post('/tebex', (req, res, next) => {
+  console.log('Headers:', req.headers); // Log all headers to debug
+  next();
+}, verifyTebexPayload, async (req, res) => {
+  logWithTraceId(req.traceId, 'Received valid Tebex webhook event.');
+
+  const webhookEvent = req.body;
+  logWithTraceId(req.traceId, `Webhook event type: ${webhookEvent.type}`);
+
+  try {
+    switch (webhookEvent.type) {
+      case 'validation.webhook':
+        await handleTebexValidation(webhookEvent);
+        break;
+      case 'payment.completed':
+        await handlePaymentCompleted(webhookEvent);
+        break;
+      case 'payment.declined':
+        await handlePaymentDeclined(webhookEvent);
+        break;
+      case 'payment.refunded':
+        await handlePaymentRefunded(webhookEvent);
+        break;
+      // Add additional cases for other webhook types
+      default:
+        logWithTraceId(req.traceId, `Unhandled webhook event type: ${webhookEvent.type}`);
+    }
+    res.status(200).send('Webhook received and verified.');
+  } catch (error) {
+    console.error('Error processing webhook:', error);
+    res.status(500).send('Error processing webhook');
   }
 });
 
