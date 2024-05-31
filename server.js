@@ -167,6 +167,27 @@ function handlePaymentRefunded(event) {
   logWithTraceId(event.id, `Payment refunded: ${JSON.stringify(event.subject)}`);
 }
 
+const allowedIPs = ['18.209.80.3', '54.87.231.232'];
+
+function normalizeIP(ip) {
+  if (ip.substr(0, 7) === "::ffff:") {
+    return ip.substr(7);
+  }
+  return ip;
+}
+
+function verifyIP(req, res, next) {
+  let senderIP = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
+  senderIP = normalizeIP(senderIP); // Normalize to IPv4 format if in IPv6 mapped format
+  if (allowedIPs.includes(senderIP)) {
+    next();
+  } else {
+    logWithTraceId(req.traceId, `Unauthorized access attempt from IP: ${senderIP}`);
+    res.status(404).send('Not Found');
+  }
+}
+
+
 // Modular function to handle Docker operations
 async function updateDockerServices() {
   const pullResult = await shell.exec(`docker compose -f /srv/sites/docker-compose.yml --env-file /srv/sites/.env pull`, { silent: true });
@@ -206,7 +227,7 @@ app.post('/webhook', verifyGitHubPayload, async (req, res) => {
   }
 });
 
-app.post('/tebex', (req, res, next) => {
+app.post('/tebex', verifyIP, (req, res, next) => {
   console.log('Headers:', req.headers); // Log all headers to debug
   next();
 }, verifyTebexPayload, async (req, res) => {
@@ -233,7 +254,15 @@ app.post('/tebex', (req, res, next) => {
       default:
         logWithTraceId(req.traceId, `Unhandled webhook event type: ${webhookEvent.type}`);
     }
-    res.status(200).send('Webhook received and verified.');
+      
+    if (webhookEvent.id) {
+      res.status(200).json({ id: webhookEvent.id });
+    } else {
+      // Optionally, handle the case where ID is missing or log the occurrence
+      logWithTraceId(req.traceId, 'Warning: Webhook event ID missing.');
+      res.status(200).json({ message: 'Webhook received and verified, but ID was missing.' });
+    }
+      
   } catch (error) {
     console.error('Error processing webhook:', error);
     res.status(500).send('Error processing webhook');
