@@ -1,7 +1,8 @@
 // /services/paymentServices.js
-
+const crypto = require('crypto');
 const axios = require('axios');
 const { logWithTraceId, sendDiscordMessage } = require('../utils');
+const { IMPERFECTGAMERS_SECRET } = require('../config');
 
 async function handleTebexValidation(event) {
   logWithTraceId(event.id, `Validation completed: ${JSON.stringify(event.subject)}`);
@@ -21,13 +22,17 @@ async function handlePaymentCompleted(event, res) {
   const steamId = event.cart.products[0].custom.steam_id;
   const username = event.cart.products[0].custom.username;
   const email = event.customer.email;
+  const payload = JSON.stringify({ steam_id: steamId, username, email }, null, 2); // Ensure consistent formatting
+  const secretKey = IMPERFECTGAMERS_SECRET;
+  const signature = crypto.createHmac('sha256', secretKey).update(payload).digest('hex');    
   const url = `https://api.imperfectgamers.org/premium/update/user/${userId}/true`;
 
   try {
-    const response = await axios.put(url, {
-      steam_id: steamId,
-      username: username,
-      email: email
+    const response = await axios.put(url, payload, {
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Signature': signature,
+        },
     });
 
     if (response.status === 200 && response.data.status === 'success') {
@@ -59,13 +64,17 @@ async function handlePaymentRefunded(event, res) {
   const steamId = event.cart.products[0].custom.steam_id;
   const username = event.cart.products[0].custom.username;
   const email = event.customer.email;
+  const payload = JSON.stringify({ steam_id: steamId, username, email }, null, 2); // Ensure consistent formatting
+  const secretKey = IMPERFECTGAMERS_SECRET;
+  const signature = crypto.createHmac('sha256', secretKey).update(payload).digest('hex');    
   const url = `https://api.imperfectgamers.org/premium/update/user/${userId}/false`;
 
   try {
-    const response = await axios.put(url, {
-      steam_id: steamId,
-      username: username,
-      email: email
+    const response = await axios.put(url, payload, {
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Signature': signature,
+        },
     });
 
     if (response.status === 200 && response.data.status === 'success') {
