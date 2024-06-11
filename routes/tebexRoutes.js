@@ -2,12 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { verifyIP, verifyTebexPayload } = require('../middleware');
 const { logWithTraceId } = require('../utils');
-const {
-  handleTebexValidation,
-  handlePaymentCompleted,
-  handlePaymentDeclined,
-  handlePaymentRefunded,
-} = require('../services/paymentServices');
+const { paymentServices } = require('../services'); 
 
 // Use router and relative path
 router.post('/', verifyIP, (req, res, next) => {
@@ -23,17 +18,17 @@ router.post('/', verifyIP, (req, res, next) => {
         let resultMessage = '';
         switch (webhookEvent.type) {
             case 'validation.webhook':
-                resultMessage = await handleTebexValidation(webhookEvent);
+                resultMessage = await paymentServices.handleTebexValidation(webhookEvent);
                 break;
             case 'payment.completed':
-                resultMessage = await handlePaymentCompleted(webhookEvent, res);
+                resultMessage = await paymentServices.handlePaymentCompleted(webhookEvent, res);
                 break;
             case 'payment.declined':
-                handlePaymentDeclined(webhookEvent);
+                paymentServices.handlePaymentDeclined(webhookEvent);
                 resultMessage = 'Payment Declined';
                 break;
             case 'payment.refunded':
-                handlePaymentRefunded(webhookEvent);
+                paymentServices.handlePaymentRefunded(webhookEvent);
                 resultMessage = 'Payment Refunded';
                 break;
             // Add additional cases for other webhook types
