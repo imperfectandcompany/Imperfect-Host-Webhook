@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { verifyGitHubPayload } = require('../middleware');
-const { updateDockerServices, logWithTraceId } = require('../utils');
+const { updateDockerServices } = require('../services');
+const { logWithTraceId } = require('../utils');
 
 router.post('/', verifyGitHubPayload, async (req, res) => {
   const eventType = req.header('X-GitHub-Event');
