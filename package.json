@@ -1,16 +1,26 @@
 {
-  "name": "webhooks",
-  "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "name": "Imperfect Webhook",
+  "version": "2.0.0",
+  "description": "A Node.js application that automates deployment and notification processes through webhook handling. Supports GitHub for automated Docker deployments, Tebex for transaction handling, and Discord for event notifications.",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node app.js",
+    "postinstall": "npm install"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "webhooks",
+    "express",
+    "discord",
+    "tebex",
+    "github",
+    "docker"
+  ],
+  "author": "Imperfect and Company LLC",
   "license": "ISC",
   "dependencies": {
+    "axios": "^0.21.4",
+    "body-parser": "^1.19.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "shelljs": "^0.8.5"
