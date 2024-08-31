@@ -31,6 +31,13 @@ router.post('/', verifyIP, (req, res, next) => {
                 paymentServices.handlePaymentRefunded(webhookEvent);
                 resultMessage = 'Payment Refunded';
                 break;
+            case 'recurring-payment.renewed':;
+                resultMessage = 'Premium Reoccuring Subscription Continued = No further action required';
+                break;                   
+            case 'recurring-payment.ended':
+                paymentServices.handlePaymentRefunded(webhookEvent);
+                resultMessage = 'Premium Reoccuring Subscription Expired and Revoked';
+                break;              
             // Add additional cases for other webhook types
             default:
                 logWithTraceId(req.traceId, `Unhandled webhook event type: ${webhookEvent.type}`);
