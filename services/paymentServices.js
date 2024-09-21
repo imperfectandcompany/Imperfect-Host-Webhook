@@ -40,8 +40,23 @@ logWithTraceId(event.id, `Payment Completed: Products: ${JSON.stringify(event.su
         console.error('Required user details are missing');
         throw new Error('Missing user details in payload');
     }
+    
+    
+    // Extract transaction_id and recurring_payment_reference
+    const transactionId = event.subject.transaction_id || '';  // Default to empty string if not present
+    const recurringPaymentReference = event.subject.recurring_payment_reference || '';  // Default to empty string if not present
 
-    const payload = JSON.stringify({ steam_id: steamId, username, email });
+    
+        // Construct the payload including transaction details
+    const payload = JSON.stringify({
+        steam_id: steamId,
+        username: username,
+        email: email,
+        transaction_id: transactionId,
+        recurring_payment_reference: recurringPaymentReference
+    });
+
+    // old version for reference const payload = JSON.stringify({ steam_id: steamId, username, email });
     
     const secretKey = IMPERFECTGAMERS_SECRET;
     console.log({payload});
