@@ -17,6 +17,8 @@ async function handleTebexValidation(event) {
 
 async function handlePaymentCompleted(event, res) {
     logWithTraceId(event.id, `Payment Completed: ${JSON.stringify(event.subject)}`);
+logWithTraceId(event.id, `Payment Completed: Transaction ID: ${event.subject.transaction_id}`);
+logWithTraceId(event.id, `Payment Completed: Products: ${JSON.stringify(event.subject.products)}`);
 
     // Early exit if headers already sent
     if (res.headersSent) return;
@@ -24,7 +26,7 @@ async function handlePaymentCompleted(event, res) {
     // Ensure 'products' are defined
     if (!event.subject.products || !event.subject.products.length) {
         console.error('Products data is missing or empty');
-        return res.status(400).send('Invalid products data');
+                throw new Error(`Failed to update premium status: Invalid products data`);
     }
 
     const { products } = event.subject;
@@ -36,34 +38,40 @@ async function handlePaymentCompleted(event, res) {
 
     if (!userId || !steamId || !username) {
         console.error('Required user details are missing');
-        return res.status(400).send('Missing user details in payload');
+        throw new Error('Missing user details in payload');
     }
 
     const payload = JSON.stringify({ steam_id: steamId, username, email });
+    
     const secretKey = IMPERFECTGAMERS_SECRET;
+    console.log({payload});
     const signature = crypto.createHmac('sha256', secretKey).update(payload).digest('hex');
     const url = `https://api.imperfectgamers.org/premium/update/user/${userId}/true`;
+        console.error('Signature', signature);
 
-    try {
-        const response = await axios.put(url, payload, {
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Signature': signature,
-            },
-        });
-
+ try {
+    const response = await axios.put(url, payload, {
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Signature': signature,
+        },
+    });
+     
         if (response.status === 200 && response.data.status === 'success') {
             logWithTraceId(event.id, 'Premium status updated successfully');
-            await sendDiscordMessage("Payment received");
+            try {
+                await sendDiscordMessage("Payment received");
+            } catch (error) {
+        throw new Error(`Error sending message to Discord after updating premium status.`);
+            }
             return res.status(200).send('Premium status updated successfully');
         }
-
         console.error(`Failed to update premium status: ${response.data.message}`);
-        return res.status(response.status).send(`Failed to update premium status: ${response.data.message}`);
+        throw new Error(`Failed to update premium status: ${response.data.message}`);
     } catch (error) {
         console.error(`Error updating premium status: ${error.message}`);
         if (!res.headersSent) {
-            return res.status(500).send(`Error updating premium status: ${error.message}`);
+            throw new Error(`Error updating premium status: ${error.message}`);
         }
     }
 }

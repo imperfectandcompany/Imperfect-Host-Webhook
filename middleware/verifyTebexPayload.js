@@ -4,6 +4,9 @@ const { TEBEX_SECRET } = require('../config');
 module.exports = function verifyTebexPayload(req, res, next) {
   console.log('Incoming Headers:', req.headers); // Log all headers to debug
   console.log('Body:', req.body); // Log the body to debug
+  console.log('rawBody:', req.rawBody); // Log the body to debug
+    console.log('Raw Body (string):', req.rawBody.toString('utf8'));
+    console.log('Tebex Secret:', TEBEX_SECRET);
 
   if (!TEBEX_SECRET) {
     console.error('TEBEX_SECRET is not set!');
@@ -29,7 +32,10 @@ module.exports = function verifyTebexPayload(req, res, next) {
 
     if (finalHash !== tebexHash) {
       console.error('Mismatched Tebex signatures.');
-      return res.status(401).json({ error: 'Mismatched Tebex signatures.' });
+        
+        console.log('Tebex hash:', tebexHash);
+        console.log('Final hash:', finalHash);
+        return res.status(401).json({ error: 'Mismatched Tebex signatures.' });
     }
   } catch (error) {
     console.error('Error creating HMAC:', error.message);

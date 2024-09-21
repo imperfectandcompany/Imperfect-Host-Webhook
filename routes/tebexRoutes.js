@@ -52,8 +52,8 @@ router.post('/', verifyIP, (req, res, next) => {
         }
 
     } catch (error) {
-        console.error('Error processing webhook:', error);
-        res.status(500).send('Error processing webhook');
+        console.error('Error processing webhook:', error.message);
+        res.status(500).send(error.message);
     }
 });
 
